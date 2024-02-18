@@ -13,17 +13,20 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 
-public class ConcurrentSuperSync {
+public class SuperSync {
 
     private File syncedDir;
     private FTPClient ftpClient;
-    private List<Thread> uploadingThreads = new ArrayList<>();
+    ScheduledExecutorService service;
 
-    public ConcurrentSuperSync(File syncedDir, String ftpServer, int ftpPort, String ftpUser, String ftpPassword) throws IOException {
+    public SuperSync(File syncedDir, String ftpServer, int ftpPort, String ftpUser, String ftpPassword) throws IOException {
         if (syncedDir == null || !syncedDir.exists() || !syncedDir.isDirectory()) {
-            throw new IOException("Invalid directory file, could not sync");
+            throw new IOException("Invalid directory name, could not sync");
         }
         this.syncedDir = syncedDir;
         fptConnect(ftpServer, ftpPort, ftpUser, ftpPassword);
@@ -46,20 +49,13 @@ public class ConcurrentSuperSync {
     }
 
     /**
-     * Se ejecuta cada x segundos,
-     * compara carpetas local y remota
-     * Thread.sleep() no es lo más óptimo, pero he encontrado problemas
-     * utilizando ExecutorService que no surgen con Thread.sleep().
+     * Cada x segundos, compara carpetas local y remota.
+     * Usa ScheduledExecutorService
      */
     public void startSync(int interval) {
-        while (true) {
-            try {
-                mainLoop();
-                Thread.sleep(interval * 1000L);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
+        Logger.logMessage("Connection established");
+        service = Executors.newSingleThreadScheduledExecutor();
+        service.scheduleAtFixedRate(() -> mainLoop(), interval, interval, TimeUnit.SECONDS);
     }
 
     List<String> localFiles = new ArrayList<>();
@@ -68,6 +64,19 @@ public class ConcurrentSuperSync {
         localFiles.clear();
         analyzeLocalDir(syncedDir);
         cleanRemoteDir("/");
+
+        // Si se ha cerrado la conexión, terminar el programa
+        try {
+            if (!ftpClient.sendNoOp()) { // No hace nada, es para comprobar si existe conexión
+                service.shutdown();
+                Logger.logError("Connection lost");
+                System.err.println("Connection lost");
+            }
+        } catch (IOException e) {
+            service.shutdown();
+            Logger.logError("Connection lost (" + e.getMessage() + ")");
+            System.err.println("Connection lost");
+        }
     }
 
     /**
@@ -91,8 +100,7 @@ public class ConcurrentSuperSync {
                     if (!existsOnFtp(child)) // si no existe en el servidor, lo sube
                         upload(child);
                 } catch (IOException e) {
-                    System.err.println("Unable to upload " + child);
-                    e.printStackTrace();
+                    Logger.logError("Unable to upload " + child + "(" + e.getMessage() + ")");
                 }
             }
         }
@@ -114,20 +122,25 @@ public class ConcurrentSuperSync {
             }
             for (FTPFile ftpFile : ftpFiles) {
                 String ftpFilePath = parent + "/" + ftpFile.getName();
-                if (ftpFile.isDirectory()) {
+                boolean isDir = ftpFile.isDirectory();
+                if (isDir) {
                     ftpFilePath += "/";
                 }
                 if (!localFiles.contains(ftpFilePath)) {
                     ftpClient.changeWorkingDirectory("/");
-                    if (ftpClient.deleteFile(ftpFilePath)) {
-                        System.out.println("Remote file " + ftpFilePath + " deleted");
+                    if (isDir && ftpClient.removeDirectory(ftpFilePath)) {
+                        Logger.logMessage("Remote directory " + ftpFilePath + " deleted");
+                    } else if (ftpClient.deleteFile(ftpFilePath)) {
+                        Logger.logMessage("Remote file " + ftpFilePath + " deleted");
+                    } else {
+                        Logger.logError("Unable to delete remote file " + ftpFilePath);
                     }
-                } else if (ftpFile.isDirectory()) {
+                } else if (isDir) {
                     cleanRemoteDir(parent + "/" + ftpFile.getName());
                 }
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            Logger.logError("Unable to clean remote directory (" + e.getMessage() + ")");
         }
     }
 
@@ -166,7 +179,7 @@ public class ConcurrentSuperSync {
 
 
     private void upload(File localFile) throws IOException {
-        System.out.println("Uploading " + localFile);
+        Logger.logMessage("Uploading " + localFile);
         String ftpPath = toFtpPath(localFile);
 
         // Crear directorios padres en el servidor si es necesario
