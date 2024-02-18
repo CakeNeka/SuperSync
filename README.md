@@ -1,7 +1,5 @@
 # SuperSync
 
-
-
 ## 📐 Diseño
 
 ```

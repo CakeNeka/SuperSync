@@ -18,13 +18,13 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 
-public class SuperSync {
+public class ConcurrentSuperSync {
 
     private File syncedDir;
     private FTPClient ftpClient;
     ScheduledExecutorService service;
 
-    public SuperSync(File syncedDir, String ftpServer, int ftpPort, String ftpUser, String ftpPassword) throws IOException {
+    public ConcurrentSuperSync(File syncedDir, String ftpServer, int ftpPort, String ftpUser, String ftpPassword) throws IOException {
         if (syncedDir == null || !syncedDir.exists() || !syncedDir.isDirectory()) {
             throw new IOException("Invalid directory name, could not sync");
         }

@@ -88,6 +88,9 @@ public class SuperSync {
      * En este caso: Subir la carpeta actualizada
      * 3. La carpeta no existe en el servidor FTP
      * En este caso: subir la nueva carpeta
+     *
+     * Un fallo que tiene este método es que no crea carpetas
+     * vacias en el servidor
      */
     private void analyzeLocalDir(File dir) {
         File[] children = dir.listFiles();
@@ -109,9 +112,12 @@ public class SuperSync {
     /**
      * Recorre los archivos en el servidor y los elimina si no tienen
      * correspondencia en la carpeta local sincronizada.
-     * <p>
+     *
      * La lista localFiles es rellenada en el método analyzeLocalDir(File dir)
      * que recorre los archivos locales.
+     *
+     * Probablemente sea excesivamente complicado, con algo más de tiempo
+     * podría refactorizar. Al menos hace lo que tiene que hacer.
      */
     private void cleanRemoteDir(String parent) {
         try {
@@ -128,18 +134,20 @@ public class SuperSync {
                 }
                 if (!localFiles.contains(ftpFilePath)) {
                     ftpClient.changeWorkingDirectory("/");
-                    if (isDir && ftpClient.removeDirectory(ftpFilePath)) {
-                        Logger.logMessage("Remote directory " + ftpFilePath + " deleted");
-                    } else if (ftpClient.deleteFile(ftpFilePath)) {
+                    if (!isDir && ftpClient.deleteFile(ftpFilePath)) {
                         Logger.logMessage("Remote file " + ftpFilePath + " deleted");
-                    } else {
-                        Logger.logError("Unable to delete remote file " + ftpFilePath);
+                    }
+                    if (isDir) {
+                        cleanRemoteDir(parent + "/" + ftpFile.getName());
+                        ftpClient.changeWorkingDirectory("/");
+                        ftpClient.removeDirectory(ftpFilePath);
                     }
                 } else if (isDir) {
                     cleanRemoteDir(parent + "/" + ftpFile.getName());
                 }
             }
         } catch (IOException e) {
+            e.printStackTrace();
             Logger.logError("Unable to clean remote directory (" + e.getMessage() + ")");
         }
     }
@@ -182,12 +190,12 @@ public class SuperSync {
         Logger.logMessage("Uploading " + localFile);
         String ftpPath = toFtpPath(localFile);
 
-        // Crear directorios padres en el servidor si es necesario
+        // Crear directorios padre en el servidor si es necesario
         String ftpPathParents = ftpPath.substring(0, ftpPath.lastIndexOf('/'));
         ftpCreateDirectoryTree(ftpPathParents);
 
+        // Subir archivo
         ftpClient.changeWorkingDirectory("/");
-
         InputStream is = new FileInputStream(localFile);
         ftpClient.storeFile(ftpPath, is);
         is.close();

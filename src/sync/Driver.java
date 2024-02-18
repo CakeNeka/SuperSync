@@ -18,7 +18,7 @@ public class Driver {
 
         try {
             SuperSync sync = new SuperSync(syncedDir, SERVER, PORT, USER, PASSWORD);
-            sync.startSync(2);
+            sync.startSync(4);
             System.out.println("Directory successfully synchronized:)");
         } catch (IOException e) {
             System.err.println("Error: " + e.getMessage());
