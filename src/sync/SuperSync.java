@@ -18,12 +18,19 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 
+/**
+ * Clase principal del sistema de sincronización.
+ */
 public class SuperSync {
 
     private File syncedDir;
     private FTPClient ftpClient;
     ScheduledExecutorService service;
 
+    /**
+     *
+     * @throws IOException Si el directorio no es válido o no es posible realizar conexión
+     */
     public SuperSync(File syncedDir, String ftpServer, int ftpPort, String ftpUser, String ftpPassword) throws IOException {
         if (syncedDir == null || !syncedDir.exists() || !syncedDir.isDirectory()) {
             throw new IOException("Invalid directory name, could not sync");
@@ -32,6 +39,9 @@ public class SuperSync {
         fptConnect(ftpServer, ftpPort, ftpUser, ftpPassword);
     }
 
+    /**
+     * Abre conexión con el servidor FTP
+     */
     private void fptConnect(String server, int port, String user, String password) throws IOException {
         ftpClient = new FTPClient();
         ftpClient.connect(server, port);
@@ -58,22 +68,37 @@ public class SuperSync {
         service.scheduleAtFixedRate(() -> mainLoop(), interval, interval, TimeUnit.SECONDS);
     }
 
+    public void stopSync(){
+        service.shutdown();
+    };
+
     List<String> localFiles = new ArrayList<>();
 
+    /**
+     * Este es el bucle principal, primero sube los archivos locales y
+     * a continuación elimina los archivos del servidor que no tienen
+     * correspondencia en la carpeta local.
+     *
+     * Por último comprueba si la conexión sigue abierta. Primero utilicé
+     * ftpClient.isConnected() pero este método siempre devuelve true.
+     * SendNoOp() falla si la conexión está cerrada.
+     * <a href="https://stackoverflow.com/questions/13836989/properly-check-ftp-server-connection">Fuente</a>
+     */
     private void mainLoop() {
         localFiles.clear();
         analyzeLocalDir(syncedDir);
         cleanRemoteDir("/");
 
+
         // Si se ha cerrado la conexión, terminar el programa
         try {
             if (!ftpClient.sendNoOp()) { // No hace nada, es para comprobar si existe conexión
-                service.shutdown();
+                stopSync();
                 Logger.logError("Connection lost");
                 System.err.println("Connection lost");
             }
         } catch (IOException e) {
-            service.shutdown();
+            stopSync();
             Logger.logError("Connection lost (" + e.getMessage() + ")");
             System.err.println("Connection lost");
         }
@@ -111,7 +136,7 @@ public class SuperSync {
 
     /**
      * Recorre los archivos en el servidor y los elimina si no tienen
-     * correspondencia en la carpeta local sincronizada.
+     * correspondencia en la carpeta local.
      *
      * La lista localFiles es rellenada en el método analyzeLocalDir(File dir)
      * que recorre los archivos locales.
@@ -154,7 +179,8 @@ public class SuperSync {
 
 
     /**
-     * Devuelve true si el archivo local existe en el servidor
+     * Devuelve true si el archivo local existe en el servidor.
+     *
      * Para que esto funcione antes he tenido que establecer la
      * fecha de última modificación en el archivo del servidor
      * al subir el archivo (en el método upload())
