@@ -1,7 +1,7 @@
 # SuperSync
 
 
-> ### [Presentación]()
+> ### [Presentación](https://cakeneka.github.io/SuperSync/presentation.html)
 > - [Presentación (pptx)](./media/presentation.pptx)
 > - [Presentación (pdf)](./media/presentation.pdf)
 > - [Presentación (html)](presentation.html)
